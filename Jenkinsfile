@@ -63,7 +63,7 @@ pipeline {
                 sudo cp target/*.jar ${DEPLOY_DIR}/${JAR_NAME}
 
                 # Kill previous application if running
-                pgrep -f ${JAR_NAME} && sudo kill -9 $(pgrep -f ${JAR_NAME}) || true
+                pgrep -f ${JAR_NAME} && sudo kill -9 $(pgrep -f \${JAR_NAME}) || true
 
                 # Start new app
                 nohup java -jar ${DEPLOY_DIR}/${JAR_NAME} > ${DEPLOY_DIR}/app.log 2>&1 &
