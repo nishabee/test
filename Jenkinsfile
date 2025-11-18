@@ -32,6 +32,7 @@ pipeline {
                    mvn -B sonar:sonar \
                      -Dsonar.login=${SONAR_TOKEN} \
                      -Dsonar.organization="nishabee" \
+                     -Dsonar.host.url=https://sonarcloud.io \
                      -Dsonar.projectKey="nishabee_test" \
                      || { echo "Sonar analysis failed"; exit 1; }
                 '''
