@@ -57,29 +57,29 @@ pipeline {
         }
 
         stage('Deploy to EC2 (same server)') {
-            steps {
-                sh '''
-                    DEPLOY_DIR=''' + "${DEPLOY_DIR}" + ''''
-                    JAR_NAME=''' + "${JAR_NAME}" + ''''
+    steps {
+        sh """
+            echo "Deploying JAR to ${DEPLOY_DIR}"
 
-                    echo "Deploying JAR to $DEPLOY_DIR"
+            # Create directory
+            sudo mkdir -p ${DEPLOY_DIR}
 
-                    sudo mkdir -p $DEPLOY_DIR
-                    sudo cp target/*.jar $DEPLOY_DIR/$JAR_NAME
+            # Copy jar from target folder
+            sudo cp target/*.jar ${DEPLOY_DIR}/${JAR_NAME}
 
-                    echo "Checking for running JAR process..."
+            # Stop existing app if running
+            PID=\$(pgrep -f ${JAR_NAME}) || true
+            if [ ! -z "\$PID" ]; then
+                echo "Stopping existing app (PID: \$PID)"
+                sudo kill -9 \$PID
+            fi
 
-                    PID=$(pgrep -f $JAR_NAME) || true
-                    if [ ! -z "$PID" ]; then
-                        echo "Killing existing process: $PID"
-                        sudo kill -9 $PID
-                    fi
-
-                    echo "Starting new application..."
-                    nohup java -jar $DEPLOY_DIR/$JAR_NAME > $DEPLOY_DIR/app.log 2>&1 &
-                '''
-            }
-        }
+            # Start new application
+            echo "Starting application..."
+            nohup java -jar ${DEPLOY_DIR}/${JAR_NAME} > ${DEPLOY_DIR}/app.log 2>&1 &
+        """
+    }
+}
     }
 
     post {
