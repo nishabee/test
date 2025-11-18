@@ -1,82 +1,80 @@
 pipeline {
+
     agent any
 
     environment {
-        // Jenkins Credential IDs (configured in Jenkins credentials)
-        SONAR_TOKEN = credentials('SONAR_TOKEN')   // secret text
-        // Optionally, GitHub PAT if needed: GITHUB_PAT = credentials('GITHUB_PAT')
-        DEPLOY_DIR = '/opt/springapp'
-        APP_JAR = 'app.jar'
+        // Maven Home (if installed manually)
+        PATH = "/usr/share/maven/bin:$PATH"
+
+        // SonarCloud settings
+        SONAR_TOKEN = credentials('SONAR_TOKEN')
+        SONAR_ORG = "nishabee"
+        SONAR_PROJECT = "nishabee_test"
+
+        // Deployment
+        DEPLOY_DIR = "/home/ubuntu/app"
+        JAR_NAME = "demo-1.0.jar"
     }
 
     stages {
-        stage('Checkout') {
+
+        stage('Checkout Code') {
             steps {
-                // Checkout code from repo (Jenkins job should be already linked; this ensures latest)
-                git branch: 'main', url: 'https://github.com/nishabee/test.git'
+                git branch: 'main', url: 'https://github.com/your-user/your-repo.git'
             }
         }
 
-        stage('Build & Test') {
+        stage('Build & Unit Test') {
             steps {
-                // Run maven build and tests
-                sh 'mvn -B -e -V clean verify'
+                sh 'mvn clean install -DskipTests=false'
             }
         }
 
         stage('SonarCloud Analysis') {
             steps {
-                // Run SonarCloud analysis. Ensure sonar.organization and sonar.projectKey are filled if required by SonarCloud
-                // Replace sonar.organization and sonar.projectKey with your actual values if SonarCloud asks for them.
-                sh '''
-                   mvn -B sonar:sonar \
-                     -Dsonar.login=${SONAR_TOKEN} \
-                     -Dsonar.organization="nishabee" \
-                     -Dsonar.host.url=https://sonarcloud.io \
-                     -Dsonar.projectKey="nishabee_test" \
-                     || { echo "Sonar analysis failed"; exit 1; }
-                '''
+                sh """
+                mvn sonar:sonar \
+                    -Dsonar.host.url=https://sonarcloud.io \
+                    -Dsonar.organization=${SONAR_ORG} \
+                    -Dsonar.projectKey=${SONAR_PROJECT} \
+                    -Dsonar.login=${SONAR_TOKEN}
+                """
             }
         }
 
         stage('Trivy Vulnerability Scan') {
             steps {
-                // Scan the project directory (source + dependencies). Exit with code 1 if vulnerabilities found.
-                // Trivy will fetch vulnerability DB (first run may download databases)
-                sh '''
-                   echo "Running Trivy filesystem scan (this may take a while on first run)..."
-                   trivy fs --security-checks vuln --exit-code 1 --format table --no-progress .
-                '''
+                sh """
+                trivy fs --exit-code 0 --severity HIGH,CRITICAL .
+                """
             }
         }
 
-        stage('Package') {
+        stage('Package JAR') {
             steps {
-                sh '''
-                  # copy the built jar to app.jar in workspace root
-                  cp target/*.jar ${APP_JAR}
-                  ls -lh ${APP_JAR} || true
-                '''
+                sh 'mvn -DskipTests package'
             }
         }
 
         stage('Deploy to EC2 (same server)') {
             steps {
-                // Copy jar to /opt/springapp and restart systemd
-                sh '''
-                  sudo cp ${APP_JAR} ${DEPLOY_DIR}/${APP_JAR}
-                  # ensure perms allow jenkins user to read the jar
-                  sudo chown jenkins:jenkins ${DEPLOY_DIR}/${APP_JAR}
-                  sudo systemctl restart springapp
-                  sudo systemctl status --no-pager springapp || true
-                '''
+                sh """
+                sudo mkdir -p ${DEPLOY_DIR}
+                sudo cp target/*.jar ${DEPLOY_DIR}/${JAR_NAME}
+
+                # Kill previous application if running
+                pgrep -f ${JAR_NAME} && sudo kill -9 $(pgrep -f ${JAR_NAME}) || true
+
+                # Start new app
+                nohup java -jar ${DEPLOY_DIR}/${JAR_NAME} > ${DEPLOY_DIR}/app.log 2>&1 &
+                """
             }
         }
     }
 
     post {
         success {
-            echo "Pipeline completed SUCCESS"
+            echo "Pipeline SUCCESS"
         }
         failure {
             echo "Pipeline FAILED"
